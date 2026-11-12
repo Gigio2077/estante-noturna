@@ -53,6 +53,7 @@ class Practice {
     return this.steps.filter(s => !s.done && Math.abs(s.t - this.pos) < tol * 2.5).flatMap(s => s.notes.map(n => n.m));
   }
   tolW() { return Math.max(0.18 * this.wps, 1 / 32); }
+  latency() { return 0.12 * this.wps; }
 
   start(now) {
     this.started = true; this.paused = false;
@@ -76,6 +77,12 @@ class Practice {
   input(m, now, src) {
     if (!this.started || this.finished || this.paused) return 'ignored';
     return this.o.mode === 'wait' ? this.inputWait(m, now, src) : this.inputTempo(m, now, src);
+  }
+
+  /** Erros reais costumam ser notas vizinhas; muito longe do esperado é ruído do microfone. */
+  nearRegister(m, exp) {
+    if (!exp.length) return false;
+    return m >= Math.min(...exp) - 12 && m <= Math.max(...exp) + 12;
   }
 
   related(m, list) {
@@ -106,6 +113,7 @@ class Practice {
       // ecos, harmônicos e notas ainda soando (pedal) não contam como erro
       const sounding = this.sounding(now).concat(s.notes.map(n => n.m), nx ? nx.notes.map(n => n.m) : []);
       if (this.related(m, sounding)) return 'ignored';
+      if (!this.nearRegister(m, s.notes.map(n => n.m))) return 'ignored';
       if (now - this.stepStartedAt < 120) return 'ignored';
       if (this.lastWrong && this.lastWrong.m === m && now - this.lastWrong.t < 1500) return 'ignored';
     } else if (prevNotes.includes(m) && now - this.stepStartedAt < 250) return 'ignored';
@@ -120,7 +128,7 @@ class Practice {
     const out = [];
     for (let i = this.idx - 1; i >= 0; i--) {
       const st = this.steps[i];
-      if (!st.doneAt || now - st.doneAt > 2500) break;
+      if (!st.doneAt || now - st.doneAt > 4000) break;
       st.notes.forEach(n => out.push(n.m));
     }
     return out;
@@ -145,13 +153,14 @@ class Practice {
 
   inputTempo(m, now, src) {
     const tol = this.tolW();
+    const pos = this.pos - (src === 'mic' ? this.latency() : 0);   // a escuta percebe a nota com atraso
     let best = null, bd = 1e9;
     for (let i = this.idx; i < this.steps.length; i++) {
       const s = this.steps[i];
-      if (s.t - this.pos > tol) break;
+      if (s.t - pos > tol) break;
       if (s.done && s.hit.size >= s.notes.length) continue;
       if (!s.notes.some(n => n.m === m) || s.hit.has(m)) continue;
-      const d = Math.abs(s.t - this.pos);
+      const d = Math.abs(s.t - pos);
       if (d <= tol && d < bd) { bd = d; best = s; }
     }
     if (best) {
@@ -161,10 +170,11 @@ class Practice {
     }
     // erro: atribui ao passo mais próximo
     let near = null; bd = 1e9;
-    for (const s of this.steps) { const d = Math.abs(s.t - this.pos); if (d < bd) { bd = d; near = s; } }
+    for (const s of this.steps) { const d = Math.abs(s.t - pos); if (d < bd) { bd = d; near = s; } }
     if (!near) return 'ignored';
-    const around = this.steps.filter(s => s.t > this.pos - Math.max(tol * 3, 2.5 * this.wps) && s.t < this.pos + tol * 3).flatMap(s => s.notes.map(n => n.m));
+    const around = this.steps.filter(s => s.t > pos - Math.max(tol * 3, 4 * this.wps) && s.t < pos + tol * 3).flatMap(s => s.notes.map(n => n.m));
     if (src === 'mic' && this.related(m, around)) return 'ignored';
+    if (src === 'mic' && !this.nearRegister(m, near.notes.map(n => n.m))) return 'ignored';
     if (src === 'mic' && this.lastWrong && this.lastWrong.m === m && now - this.lastWrong.t < 1500) return 'ignored';
     this.lastWrong = { m, t: now };
     if (around.includes(m)) return 'ignored';
@@ -178,7 +188,7 @@ class Practice {
     if (this.o.mode === 'tempo') {
       this.pos = this.posStart + (now - this.startClock) / 1000 * this.wps;
       const tol = this.tolW();
-      while (this.idx < this.steps.length && this.steps[this.idx].t + tol < this.pos) {
+      while (this.idx < this.steps.length && this.steps[this.idx].t + tol < this.pos - this.latency()) {
         const s = this.steps[this.idx];
         if (!s.done) { s.done = true; if (s.hit.size < s.need) { s.missed = true; this.emit('miss', s); } }
         this.idx++;

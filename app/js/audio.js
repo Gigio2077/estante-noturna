@@ -2,6 +2,47 @@
 const Sound = (() => {
   let ctx = null, master = null, bus = null, tap = null;
   const voices = new Set();
+  // amostras do piano (Salamander Grand Piano, Yamaha C5), a cada terça menor
+  const piano = new Map();          // midi -> AudioBuffer
+  let pianoLoading = null;
+  const SAMPLE_NAMES = [];
+  for (let o = 0; o <= 7; o++) for (const [n, k] of [['C', 0], ['Ds', 3], ['Fs', 6], ['A', 9]]) {
+    const midi = 12 * (o + 1) + k; if (midi >= 21) SAMPLE_NAMES.push([n + o, midi]);
+  }
+  SAMPLE_NAMES.push(['C8', 108]);
+  function loadPiano() {
+    if (pianoLoading || !ctx) return pianoLoading;
+    pianoLoading = Promise.all(SAMPLE_NAMES.map(async ([name, midi]) => {
+      try {
+        const r = await fetch(`samples/piano/${name}.mp3`);
+        if (!r.ok) return;
+        piano.set(midi, await ctx.decodeAudioData(await r.arrayBuffer()));
+      } catch (e) { /* sem amostra: usa o sintetizador */ }
+    }));
+    return pianoLoading;
+  }
+  function nearestSample(m) {
+    let best = null, bd = 99;
+    for (const k of piano.keys()) { const d = Math.abs(k - m); if (d < bd) { bd = d; best = k; } }
+    return bd <= 3 ? best : null;
+  }
+  function sampleNote(m, dur, vel, t0) {
+    const k = nearestSample(m); if (k == null) return null;
+    const srcN = ctx.createBufferSource(); srcN.buffer = piano.get(k);
+    srcN.playbackRate.value = Math.pow(2, (m - k) / 12);
+    const g = ctx.createGain();
+    const amp = 0.9 * Math.pow(vel, 1.4);
+    g.gain.setValueAtTime(amp, t0);
+    const end = t0 + Math.max(0.15, dur);
+    g.gain.setValueAtTime(amp, end);
+    g.gain.setTargetAtTime(0, end, 0.12);
+    srcN.connect(g); g.connect(bus); if (tap) g.connect(tap);
+    srcN.start(t0); srcN.stop(end + 1);
+    const v = { out: g, oscs: [srcN], end };
+    voices.add(v);
+    srcN.onended = () => { voices.delete(v); try { g.disconnect(); } catch (e) {} };
+    return v;
+  }
 
   function ensure() {
     if (!ctx) {
@@ -11,6 +52,7 @@ const Sound = (() => {
       comp.threshold.value = -18; comp.ratio.value = 4;
       bus = ctx.createGain();
       bus.connect(master); master.connect(comp); comp.connect(ctx.destination);
+      loadPiano();
     }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
@@ -21,6 +63,7 @@ const Sound = (() => {
   function note(m, dur = 0.6, vel = 0.7, when = 0) {
     ensure();
     const t0 = Math.max(ctx.currentTime, when || 0);
+    if (piano.size) { const v = sampleNote(m, dur, vel, t0); if (v) return v; }
     const f = freq(m);
     const out = ctx.createGain();
     const lp = ctx.createBiquadFilter();
@@ -73,7 +116,8 @@ const Sound = (() => {
   }
 
   return {
-    ensure, note, click, stopAll, freq,
+    ensure, note, click, stopAll, freq, loadPiano,
+    get pianoReady() { return piano.size > 0; },
     get ctx() { return ctx; },
     get now() { return ctx ? ctx.currentTime : 0; },
     /** Encaminha o som do sintetizador para um nó extra (usado no autoteste da escuta). */

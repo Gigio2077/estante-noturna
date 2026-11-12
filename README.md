@@ -31,10 +31,26 @@ Cada push na branch `main` republica a pasta `app/` pelo GitHub Pages (`.github/
 - **Zoom do teclado**: botões − / Auto / + sobre as notas, pinça com dois dedos ou roda do mouse. Com zoom, o teclado acompanha as notas atuais e uma seta na borda mostra notas que ficaram fora da tela.
 - **Celular deitado**: os controles viram duas colunas laterais e o centro fica para partitura e teclado.
 - **Progresso**: salvo no navegador do aparelho (localStorage).
+- **Escuta**: "Começar" liga o microfone. Notas ouvidas piscam em cinza no teclado. Só contam notas com ataque de martelo; notas que ainda soam no pedal, harmônicos e ruídos muito longe do esperado não contam como erro.
+- **Som**: Salamander Grand Piano (Yamaha C5), de Alexander Holm, CC BY 3.0.
 
 ## Teste sem piano
 
 `index.html?selftest=1` faz o app tocar as notas esperadas no próprio sintetizador e ouvi-las pelo mesmo detector usado no microfone.
+
+## Testar a escuta com piano de verdade
+
+`tools/listening/` testa o mesmo detector (`app/js/detector.js`) e o mesmo motor de prática com as amostras do Salamander Grand Piano (Yamaha C5, em `app/samples/piano/`):
+
+```
+pip install miniaudio numpy
+python3 tools/listening/decode.py app/samples/piano            # gera app/samples/piano/pcm48k/*.f32 (não versionado)
+export APP=app SAMPLES=app/samples/piano SDIR=/tmp/escuta
+node tools/listening/sim.js '[{"name":"direita","hand":"R","from":0,"to":4}]'   # aluno simulado, modo Espera
+node tools/listening/live.js '{"name":"ao vivo","hand":"B","from":0,"to":2}'     # alto-falante -> microfone (PipeWire)
+```
+
+`index.html?selftest=1` faz o app tocar e ouvir a si mesmo internamente; `?selftest=mic` toca pelos alto-falantes e ouve pelo microfone.
 
 ## Adicionar outra peça
 

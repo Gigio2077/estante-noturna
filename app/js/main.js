@@ -18,7 +18,7 @@
   // ---------- partitura e teclado ----------
   $('pieceTitle').textContent = piece.title;
   $('pieceSub').textContent = `${piece.composer.split(' ').pop()} · ${piece.key} · ${piece.meter}`;
-  $('credit').textContent = piece.credit + '. Composição em domínio público.';
+  $('credit').textContent = piece.credit + '. Composição em domínio público. Som de piano: Salamander Grand Piano (Yamaha C5), de Alexander Holm (CC BY 3.0).';
   const roll = new Roll($('roll'), (m, down) => { if (down) { Sound.note(m, 0.6, 0.6); handleInput(m, 'touch'); } });
   const score = new Score($('score'), piece);
   score.load().then(() => {
@@ -138,7 +138,7 @@
     if (!practice || practice.finished) prepare();
     if (practice.started && practice.paused) { practice.resume(performance.now()); running = true; setStartLabel('Pausar'); return; }
     if (practice.started && !practice.paused) { practice.pause(performance.now()); running = false; setStartLabel('Continuar'); return; }
-    if (!Listener.running && !midiOn && !SELFTEST) say('Microfone desligado: toque no teclado da tela ou ligue o microfone', '', 2600);
+    if (!Listener.running && !midiOn && !SELFTEST) await enableMic();
     if (prefs.mode === 'tempo') {
       await countdown();
     }
@@ -222,27 +222,34 @@
   let loud = null;     // volume típico das notas certas (dB), para filtrar fantasmas fracos
   Listener.onOnsets(cands => {
     for (const c of cands) {
+      let r;
       if (c.exp) {
-        const r = handleInput(c.m, 'mic');
+        r = handleInput(c.m, 'mic');
         if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2;
-      } else if (!c.harmonic && (loud == null || c.db >= loud - 8)) handleInput(c.m, 'mic');
+      } else if (!c.harmonic && (loud == null || c.db >= loud - 8)) r = handleInput(c.m, 'mic');
+      // mostra no teclado o que o microfone ouviu, mesmo quando não conta para a prática
+      if (r === 'ignored' && !c.harmonic) roll.flashKey(c.m, roll.col.muted, 220);
     }
   });
+  async function enableMic() {
+    try {
+      await Listener.startMic();
+      $('btnMic').classList.add('on'); $('btnMic').classList.remove('denied');
+      $('btnMic').setAttribute('aria-label', 'Desligar microfone');
+      say('Ouvindo pelo microfone. Notas ouvidas piscam em cinza no teclado.', 'ok', 2600);
+      setInputInfo(); return true;
+    } catch (e) {
+      $('btnMic').classList.add('denied');
+      say(e.message === 'insecure' ? 'O microfone exige https (ou localhost)' : 'Sem acesso ao microfone. Libere a permissão no navegador; o teclado da tela continua funcionando.', 'err', 4000);
+      setInputInfo(); return false;
+    }
+  }
   $('btnMic').onclick = async () => {
     if (Listener.running) {
       Listener.stop(); $('btnMic').classList.remove('on'); $('btnMic').setAttribute('aria-label', 'Ligar microfone');
       setInputInfo(); return;
     }
-    try {
-      await Listener.startMic();
-      $('btnMic').classList.add('on'); $('btnMic').classList.remove('denied');
-      $('btnMic').setAttribute('aria-label', 'Desligar microfone');
-      say('Ouvindo. Toque a nota destacada.', 'ok', 1800);
-    } catch (e) {
-      $('btnMic').classList.add('denied');
-      say(e.message === 'insecure' ? 'O microfone exige https (ou localhost)' : 'Sem acesso ao microfone. Libere a permissão no navegador.', 'err', 3500);
-    }
-    setInputInfo();
+    await enableMic();
   };
 
   // MIDI
@@ -565,7 +572,12 @@
   syncSettings();
   if (SELFTEST) {
     $('btnMic').classList.add('on');
-    document.addEventListener('click', () => { if (!Listener.running) Listener.startLoopback(); }, { once: true, capture: true });
+    // ?selftest=mic toca pelos alto-falantes e escuta pelo microfone de verdade
+    document.addEventListener('click', () => {
+      if (Listener.running) return;
+      if (params.get('selftest') === 'mic') Listener.startMic().catch(e => say('Microfone: ' + e.message, 'err', 4000));
+      else Listener.startLoopback();
+    }, { once: true, capture: true });
   }
   requestAnimationFrame(frame);
   window.__app = { get practice() { return practice; }, get ex() { return ex; }, piece, Coach, Listener, setExercise, start, score, lockPassage, unlock, roll, redraw: draw };
