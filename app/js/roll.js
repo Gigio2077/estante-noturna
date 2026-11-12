@@ -23,6 +23,16 @@ class Roll {
     this.col = { R: v('--rh'), L: v('--lh'), ok: v('--ok'), err: v('--err'), ink: v('--ink'), line: v('--line'), muted: v('--muted'), text: v('--text'), deck: v('--deck') };
     this.resize();
     new ResizeObserver(() => this.resize()).observe(canvas);
+    this.zoomKeys = null;            // null = automático (cabe tudo); número = teclas brancas visíveis
+    this.onZoom = null;
+    this.touches = new Map(); this.pinch = null;
+    canvas.addEventListener('pointerdown', e => this.zoomPointer(e, 'down'));
+    canvas.addEventListener('pointermove', e => this.zoomPointer(e, 'move'));
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(ev, e => this.zoomPointer(e, 'up'));
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      this.setZoom(this.visibleKeys * Math.exp(e.deltaY * 0.0015));
+    }, { passive: false });
     canvas.addEventListener('pointerdown', e => this.pointer(e, true));
     canvas.addEventListener('pointerup', e => this.pointer(e, false));
     canvas.addEventListener('pointercancel', e => this.pointer(e, false));
@@ -33,7 +43,37 @@ class Roll {
     this.W = r.width; this.H = r.height; this.dpr = dpr;
     this.c.width = Math.round(r.width * dpr); this.c.height = Math.round(r.height * dpr);
   }
-  get kh() { return Math.round(Math.min(this.H * 0.34, Math.max(70, this.ww * 5.2))); }
+  get kh() { return Math.round(Math.min(this.H * (this.zoomKeys && this.H > 320 ? 0.42 : 0.34), Math.max(60, this.ww * 5.2))); }
+  get visibleKeys() { return this.wHi - this.wLo + 1; }
+  setZoom(k) {
+    this.zoomKeys = k == null ? null : Math.max(8, Math.min(52, k));
+    this.zLo = null;
+    if (this.onZoom) this.onZoom(this.zoomKeys);
+  }
+  zoomBy(f) { this.setZoom(Math.round(this.visibleKeys * f)); }
+  /** Pinça com dois dedos na área das notas. */
+  zoomPointer(e, kind) {
+    const r = this.c.getBoundingClientRect(), y = e.clientY - r.top;
+    if (kind === 'down') {
+      if (y >= this.H - this.kh) return;
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touches.size === 2) {
+        const [a, b] = [...this.touches.values()];
+        this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: this.visibleKeys };
+      }
+    } else if (kind === 'move') {
+      if (!this.touches.has(e.pointerId)) return;
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.pinch && this.touches.size === 2) {
+        const [a, b] = [...this.touches.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d > 10) this.setZoom(this.pinch.k * this.pinch.d / d);
+      }
+    } else {
+      this.touches.delete(e.pointerId);
+      if (this.touches.size < 2) this.pinch = null;
+    }
+  }
   get ww() { return this.W / (this.wHi - this.wLo + 1); }
   keyRect(m) {
     const ww = this.ww, top = this.H - this.kh;
@@ -73,8 +113,9 @@ class Roll {
     const g = this.g, W = this.W, H = this.H, dpr = this.dpr;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
-    const span = s.span || 1.6;
     const kh = this.kh, hitY = H - kh;
+    // pouca altura (celular deitado): mostra menos tempo para as notas não ficarem achatadas
+    const span = Math.max(0.6, Math.min(s.span || 1.6, (hitY - 8) / 170));
     const pps = (hitY - 8) / span;
     const now = performance.now();
 
@@ -88,6 +129,24 @@ class Roll {
     const minSpan = W < 500 ? 20 : W < 900 ? 30 : 40;
     let tLo = wIndex(lo) - 1, tHi = wIndex(hi) + 1;
     while (tHi - tLo + 1 < minSpan * 7 / 12) { tLo -= 0.5; tHi += 0.5; }
+    if (this.zoomKeys) {
+      // zoom manual: janela fixa de teclas que acompanha as notas de agora
+      const K = Math.round(this.zoomKeys);
+      let fLo = 200, fHi = 0;
+      const focus = s.current && s.current.size ? [...s.current]
+        : s.notes.filter(n => n.t + n.d >= s.pos - 0.01 && n.t <= s.pos + 0.35 && (s.activeHand === 'B' || n.h === s.activeHand)).map(n => n.m);
+      for (const m of focus) { if (m < fLo) fLo = m; if (m > fHi) fHi = m; }
+      if (fLo > fHi) { fLo = lo; fHi = hi; }
+      const a = wIndex(fLo), b = wIndex(fHi);
+      let zl = this.zLo;
+      const fits = b - a + 3 <= K;
+      if (zl == null || a < zl + 1 || b > zl + K - 2) {
+        zl = fits ? Math.round((a + b) / 2 - (K - 1) / 2) : a - 1;     // não cabe tudo: prioriza a nota mais grave
+      }
+      zl = Math.max(wIndex(21), Math.min(wIndex(108) - K + 1, zl));
+      this.zLo = zl;
+      tLo = zl; tHi = zl + K - 1;
+    }
     const k = s.instant ? 1 : 0.08;
     this.wLo += (tLo - this.wLo) * k; this.wHi += (tHi - this.wHi) * k;
     const ww = this.ww;
@@ -213,6 +272,27 @@ class Roll {
       }
     }
     g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, hitY, W, 3);
+    // notas esperadas fora da tela (com zoom): seta na borda com o nome
+    if (s.current && this.zoomKeys) {
+      const left = [], right = [];
+      for (const m of s.current) {
+        const k = this.keyRect(m);
+        if (k.x + k.w < 2) left.push(m); else if (k.x > W - 2) right.push(m);
+      }
+      g.font = '700 11px system-ui, sans-serif'; g.textBaseline = 'middle';
+      const tag = (list, side) => {
+        if (!list.length) return;
+        list.sort((a, b) => a - b);
+        const txt = (side < 0 ? '◀ ' : '') + list.map(m => ptName((s.curName && s.curName.get(m)) || SHARP_NAMES[m % 12]) + (Math.floor(m / 12) - 1)).join(' ') + (side > 0 ? ' ▶' : '');
+        const tw = g.measureText(txt).width + 12, y = hitY - 16;
+        const x = side < 0 ? 4 : W - tw - 4;
+        g.fillStyle = 'rgba(17,19,31,0.92)'; roundRect(g, x, y - 10, tw, 20, 6); g.fill();
+        g.strokeStyle = (s.curHand && s.curHand.get(list[0])) || this.col.R; g.lineWidth = 1.5; g.stroke();
+        g.fillStyle = this.col.text; g.textAlign = 'left'; g.fillText(txt, x + 6, y + 0.5);
+      };
+      tag(left, -1); tag(right, 1);
+      g.textBaseline = 'alphabetic';
+    }
     for (const [m, f] of this.flash) if (f.until < now) this.flash.delete(m);
   }
 }

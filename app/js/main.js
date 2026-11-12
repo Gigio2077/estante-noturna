@@ -7,7 +7,7 @@
   const HAND_NAME = { R: 'mão direita', L: 'mão esquerda', B: 'ambas as mãos' };
   const TYPE_NAME = { new: 'Nova seção', errors: 'Revisar erros', wide: 'Revisão ampla', free: 'Trecho livre', cont: 'Continuar seção', locked: 'Trecho fixo' };
 
-  const prefs = Object.assign({ hand: 'B', mode: 'wait', speed: 0.5, strict: 'normal', names: true, accomp: false, click: true, sens: 5, locked: null }, Coach.prefs(piece.id));
+  const prefs = Object.assign({ hand: 'B', mode: 'wait', speed: 0.5, strict: 'normal', names: true, accomp: false, click: true, sens: 5, locked: null, view: 'both', zoom: null }, Coach.prefs(piece.id));
   const savePrefs = () => { Object.assign(Coach.prefs(piece.id), prefs); Coach.savePrefs(); };
 
   let ex = null, practice = null, demo = null, running = false, wakeLock = null;
@@ -118,6 +118,14 @@
     $('statErr').textContent = `${errs} ${errs === 1 ? 'erro' : 'erros'}`;
     $('statErr').classList.toggle('has', errs > 0);
     $('progressFill').style.width = (total ? done / total * 100 : 0) + '%';
+    // resumo compacto sobre as notas (usado com o celular deitado)
+    const si = $('stageInfo');
+    si.innerHTML = '';
+    const b = document.createElement('b'); b.textContent = ex.label;
+    si.append(`${TYPE_NAME[ex.type] || ''}: `, b, ` · ${HAND_NAME[prefs.hand]} · ${done}/${total} · ${errs} ${errs === 1 ? 'erro' : 'erros'}`);
+    if (prefs.locked) {
+      const u = document.createElement('button'); u.textContent = 'Sair do trecho'; u.onclick = unlock; si.append(u);
+    }
   }
   function setStartLabel(t) {
     $('btnStartLabel').textContent = t;
@@ -320,7 +328,8 @@
   }
   setInterval(logic, 16);
 
-  function frame() {
+  function frame() { draw(); requestAnimationFrame(frame); }
+  function draw() {
     let pos = 0, current = null, currentT = -1, hits = null;
     const curHand = new Map(), curName = new Map();
     if (demo) { pos = curT(); currentT = pos; }
@@ -349,7 +358,6 @@
       bars: piece.bars, showNames: prefs.names, span: 1.6, instant: instantRange,
     });
     instantRange = false;
-    requestAnimationFrame(frame);
   }
 
   function playAccomp(fromT, toT) {
@@ -520,7 +528,39 @@
     if (e.code === 'Space') { e.preventDefault(); start(); }
   });
 
+  // ---------- o que mostrar: partitura, teclado ou ambos ----------
+  const VIEWS = ['both', 'score', 'roll'];
+  const VIEW_LABEL = { both: 'Partitura + teclado', score: 'Só partitura', roll: 'Só teclado' };
+  const VIEW_ICON = { both: 'M4 10h16', score: 'M4 14h16M8 8h8', roll: 'M4 13h16M8 13v7M12 13v7M16 13v7' };
+  function setView(v, announce) {
+    prefs.view = v; savePrefs();
+    $('app').dataset.view = v;
+    $('viewIconPath').setAttribute('d', VIEW_ICON[v]);
+    $('btnView').setAttribute('aria-label', 'Mostrar: ' + VIEW_LABEL[v]);
+    document.querySelectorAll('#setView button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    setTimeout(() => {
+      score.rerenderIfNeeded();
+      if (practice && score.ready) { score.setRange(ex.from, ex.to); score.moveTo(curT(), false); }
+    }, 60);
+    if (announce) say(VIEW_LABEL[v]);
+  }
+  $('btnView').onclick = () => setView(VIEWS[(VIEWS.indexOf(prefs.view) + 1) % VIEWS.length], true);
+  document.querySelectorAll('#setView button').forEach(b => b.onclick = () => setView(b.dataset.v));
+
+  // ---------- zoom do teclado ----------
+  function paintZoom() {
+    $('btnZoomFit').classList.toggle('on', !roll.zoomKeys);
+    $('btnZoomFit').textContent = roll.zoomKeys ? Math.round(roll.zoomKeys) + ' teclas' : 'Auto';
+  }
+  roll.onZoom = k => { prefs.zoom = k; savePrefs(); paintZoom(); };
+  roll.zoomKeys = prefs.zoom || null;
+  $('btnZoomIn').onclick = () => roll.zoomBy(0.78);
+  $('btnZoomOut').onclick = () => roll.zoomBy(1.28);
+  $('btnZoomFit').onclick = () => roll.setZoom(null);
+  paintZoom();
+
   // ---------- início ----------
+  setView(prefs.view);
   setHand(prefs.hand);
   syncSettings();
   if (SELFTEST) {
@@ -528,5 +568,5 @@
     document.addEventListener('click', () => { if (!Listener.running) Listener.startLoopback(); }, { once: true, capture: true });
   }
   requestAnimationFrame(frame);
-  window.__app = { get practice() { return practice; }, get ex() { return ex; }, piece, Coach, Listener, setExercise, start, score, lockPassage, unlock };
+  window.__app = { get practice() { return practice; }, get ex() { return ex; }, piece, Coach, Listener, setExercise, start, score, lockPassage, unlock, roll, redraw: draw };
 })();

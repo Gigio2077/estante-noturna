@@ -34,13 +34,13 @@ class Score {
   }
   fitZoom() {
     const h = this.el.clientHeight || 200;
-    this.osmd.zoom = Math.max(0.45, Math.min(1.0, h / 270));
+    this.osmd.zoom = Math.max(0.45, Math.min(1.4, h / 270));
     this.zoomFor = h;
   }
   rerenderIfNeeded() {
     if (!this.ready) return;
     const h = this.el.clientHeight;
-    if (Math.abs(h - this.zoomFor) < 20) return;
+    if (h < 40 || Math.abs(h - this.zoomFor) < 20) return;   // escondida ou sem mudança relevante
     this.fitZoom(); this.osmd.render(); this.buildTimeline(); this.measureBars();
     if (this.range) this.setRange(...this.range);
   }

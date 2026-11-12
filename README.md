@@ -27,6 +27,9 @@ Cada push na branch `main` republica a pasta `app/` pelo GitHub Pages (`.github/
 - **Mapa** (ícone de barras): taxa de erro por compasso. Toque no compasso inicial e depois no final (ou arraste) e use "Praticar trecho": o trecho fica **fixo** e se repete até você tocar em "Sair do trecho".
 - **Partitura**: toque num compasso do trecho para começar a prática dali.
 - **Nomes das notas**: aparecem em todas as notas que caem (Ajustes → Nomes das notas).
+- **Mostrar**: o botão de janela no topo alterna entre partitura + teclado, só partitura e só teclado.
+- **Zoom do teclado**: botões − / Auto / + sobre as notas, pinça com dois dedos ou roda do mouse. Com zoom, o teclado acompanha as notas atuais e uma seta na borda mostra notas que ficaram fora da tela.
+- **Celular deitado**: os controles viram duas colunas laterais e o centro fica para partitura e teclado.
 - **Progresso**: salvo no navegador do aparelho (localStorage).
 
 ## Teste sem piano
