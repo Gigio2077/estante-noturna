@@ -1,0 +1,11 @@
+{
+  "name": "Estante Noturna",
+  "short_name": "Estante",
+  "description": "Aprender peças de piano com partitura, notas caindo e escuta pelo microfone.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#11131f",
+  "theme_color": "#11131f",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

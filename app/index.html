@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#11131f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Estante Noturna</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css?v=11">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="piece">
+      <span class="piece-title" id="pieceTitle">Noturno Op. 9 nº 2</span>
+      <span class="piece-sub" id="pieceSub">Chopin · Mi♭ maior · 12/8</span>
+    </div>
+    <div class="hands" role="radiogroup" aria-label="Mão para praticar">
+      <button class="hand" data-hand="L" role="radio" aria-checked="false"><span class="dot dot-L"></span>Esquerda</button>
+      <button class="hand" data-hand="B" role="radio" aria-checked="true"><span class="dot dot-B"></span>Ambas</button>
+      <button class="hand" data-hand="R" role="radio" aria-checked="false"><span class="dot dot-R"></span>Direita</button>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="btnMic" aria-label="Ligar microfone" title="Microfone">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>
+        <span class="mic-level" id="micLevel"></span>
+      </button>
+      <button class="icon-btn" id="btnMap" aria-label="Mapa de erros" title="Mapa da peça">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><rect x="17" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <button class="icon-btn" id="btnSettings" aria-label="Ajustes" title="Ajustes">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="score-wrap" aria-label="Partitura">
+    <div id="score" class="score"></div>
+    <div class="score-loading" id="scoreLoading">Preparando a partitura…</div>
+  </section>
+
+  <section class="stage" id="stage">
+    <canvas id="roll"></canvas>
+    <div class="feedback" id="feedback" aria-live="polite"></div>
+    <div class="countdown" id="countdown" hidden></div>
+  </section>
+
+  <section class="coach" id="coach">
+    <div class="ex">
+      <div class="ex-head">
+        <span class="ex-type" id="exType">Nova seção</span>
+        <span class="ex-range" id="exRange">Compassos 1–2</span>
+        <button class="chip-btn" id="btnUnlock" hidden aria-label="Sair do trecho fixo">Sair do trecho
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+      </div>
+      <p class="ex-why" id="exWhy">Comece pelo início da peça.</p>
+    </div>
+    <div class="run-stats">
+      <div class="progress" aria-hidden="true"><div class="progress-fill" id="progressFill"></div></div>
+      <span class="stat" id="statHits">0 / 0</span>
+      <span class="stat stat-err" id="statErr">0 erros</span>
+    </div>
+    <div class="controls">
+      <button class="btn ghost" id="btnListen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>Ouvir</button>
+      <button class="btn primary" id="btnStart">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg><span id="btnStartLabel">Começar</span></button>
+      <button class="btn ghost" id="btnRestart" aria-label="Recomeçar trecho">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v4h4"/></svg>Recomeçar</button>
+      <button class="btn ghost" id="btnSkip" aria-label="Pular nota">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l9 7-9 7zM17 5v14"/></svg>Pular</button>
+    </div>
+  </section>
+</div>
+
+<!-- Resultado -->
+<div class="sheet" id="resultSheet" hidden>
+  <div class="sheet-card" role="dialog" aria-labelledby="resTitle">
+    <h2 id="resTitle">Trecho concluído</h2>
+    <div class="res-grid">
+      <div><span class="big" id="resAcc">0%</span><span class="lbl">precisão</span></div>
+      <div><span class="big" id="resErr">0</span><span class="lbl">notas com erro</span></div>
+      <div><span class="big" id="resTime">0s</span><span class="lbl">tempo</span></div>
+    </div>
+    <div class="res-bars" id="resBars"></div>
+    <p class="res-msg" id="resMsg"></p>
+    <div class="res-next">
+      <span class="lbl">Próximo exercício</span>
+      <strong id="resNext">—</strong>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="btnRepeat">Repetir este</button>
+      <button class="btn primary" id="btnNext">Continuar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mapa -->
+<div class="sheet" id="mapSheet" hidden>
+  <div class="sheet-card wide" role="dialog" aria-labelledby="mapTitle">
+    <div class="sheet-head">
+      <h2 id="mapTitle">Mapa da peça</h2>
+      <button class="icon-btn" data-close="mapSheet" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <p class="hint">Cor = taxa de erro recente por compasso, <b id="mapHand">ambas as mãos</b>. Para escolher um trecho, toque no compasso inicial e depois no final (ou arraste por cima deles). O trecho fica fixo até você sair dele.</p>
+    <div class="map-grid" id="mapGrid"></div>
+    <div class="legend">
+      <span><i class="lg lg-none"></i>não tocado</span>
+      <span><i class="lg lg-good"></i>firme</span>
+      <span><i class="lg lg-mid"></i>instável</span>
+      <span><i class="lg lg-bad"></i>muitos erros</span>
+    </div>
+    <div class="map-sel">
+      <span id="mapSelLabel">Toque no compasso inicial</span>
+      <div class="map-sel-btns">
+        <button class="btn ghost" id="btnMapClear" hidden>Limpar</button>
+        <button class="btn primary" id="btnMapGo" disabled>Praticar trecho</button>
+      </div>
+    </div>
+    <h3>Seções</h3>
+    <div class="sections" id="sectionList"></div>
+    <h3>Revisões programadas</h3>
+    <p class="hint" id="planInfo"></p>
+  </div>
+</div>
+
+<!-- Ajustes -->
+<div class="sheet" id="settingsSheet" hidden>
+  <div class="sheet-card" role="dialog" aria-labelledby="setTitle">
+    <div class="sheet-head">
+      <h2 id="setTitle">Ajustes</h2>
+      <button class="icon-btn" data-close="settingsSheet" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="field">
+      <span class="field-lbl">Modo de prática</span>
+      <div class="seg" id="setMode">
+        <button data-v="wait">Espera</button><button data-v="tempo">No ritmo</button>
+      </div>
+      <p class="hint">Espera: a partitura só anda quando você toca a nota certa. No ritmo: segue o andamento e conta notas perdidas.</p>
+    </div>
+    <div class="field">
+      <label class="field-lbl" for="setSpeed">Andamento: <b id="setSpeedVal">50%</b> <span class="muted" id="setSpeedBpm"></span></label>
+      <input type="range" id="setSpeed" min="25" max="100" step="5" value="50">
+    </div>
+    <div class="field">
+      <span class="field-lbl">Exigência da escuta</span>
+      <div class="seg" id="setStrict">
+        <button data-v="easy">Leve</button><button data-v="normal">Normal</button><button data-v="strict">Rigorosa</button>
+      </div>
+      <p class="hint">Em acordes grandes pelo microfone, “Normal” aceita 2 de 3 notas. Com teclado MIDI, use “Rigorosa”.</p>
+    </div>
+    <div class="field toggles">
+      <label><input type="checkbox" id="setNames"> Nomes das notas no teclado</label>
+      <label><input type="checkbox" id="setAccomp"> Tocar a outra mão (use fones)</label>
+      <label><input type="checkbox" id="setClick"> Metrônomo no modo “No ritmo”</label>
+    </div>
+    <div class="field">
+      <span class="field-lbl">Entrada</span>
+      <p class="hint" id="inputInfo">Microfone desligado. Toque no teclado da tela para testar.</p>
+      <button class="btn ghost" id="btnMidi">Conectar teclado MIDI</button>
+    </div>
+    <div class="field">
+      <span class="field-lbl">Sensibilidade do microfone</span>
+      <input type="range" id="setSens" min="0" max="10" step="1" value="5" aria-label="Sensibilidade do microfone">
+    </div>
+    <div class="field danger">
+      <button class="btn ghost" id="btnReset">Zerar progresso desta peça</button>
+      <span class="hint" id="resetConfirm" hidden>Toque de novo para confirmar.</span>
+    </div>
+    <p class="credit" id="credit"></p>
+  </div>
+</div>
+
+<script src="vendor/opensheetmusicdisplay.min.js"></script>
+<script src="pieces/chopin-op9-2.js?v=11"></script>
+<script src="js/audio.js?v=11"></script>
+<script src="js/listener.js?v=11"></script>
+<script src="js/practice.js?v=11"></script>
+<script src="js/coach.js?v=11"></script>
+<script src="js/roll.js?v=11"></script>
+<script src="js/score.js?v=11"></script>
+<script src="js/main.js?v=11"></script>
+</body>
+</html>
