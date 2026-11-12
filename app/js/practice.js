@@ -44,10 +44,7 @@ class Practice {
   get expected() {
     if (this.o.mode === 'wait') {
       const s = this.current; if (!s) return [];
-      const out = s.notes.filter(n => !s.hit.has(n.m)).map(n => n.m);
-      const nx = this.steps[this.idx + 1];
-      if (nx) out.push(...nx.notes.map(n => n.m));
-      return out;
+      return s.notes.filter(n => !s.hit.has(n.m)).map(n => n.m);
     }
     const tol = this.tolW();
     return this.steps.filter(s => !s.done && Math.abs(s.t - this.pos) < tol * 2.5).flatMap(s => s.notes.map(n => n.m));
@@ -74,8 +71,11 @@ class Practice {
   }
 
   /** Entrada de nota. src: 'mic' | 'midi' | 'touch'. Retorna 'hit' | 'wrong' | 'ignored'. */
-  input(m, now, src) {
+  input(m, now, src, attack) {
     if (!this.started || this.finished || this.paused) return 'ignored';
+    // a martelada que completou um passo não vale para o seguinte (eco/harmônicos do mesmo toque)
+    if (attack != null && this.o.mode === 'wait' && this.doneAttack != null && attack <= this.doneAttack + 60) return 'ignored';
+    this.curAttack = attack;
     return this.o.mode === 'wait' ? this.inputWait(m, now, src) : this.inputTempo(m, now, src);
   }
 
@@ -137,6 +137,7 @@ class Practice {
   complete(now) {
     const s = this.current; if (!s) return;
     s.done = true; s.doneAt = now;
+    if (this.curAttack != null) this.doneAttack = this.curAttack;
     const prev = this.steps[this.idx - 1];
     const expectSec = prev ? (s.t - prev.t) / this.wps : 0;
     s.wait = Math.max(0, (now - this.stepStartedAt) / 1000 - expectSec);

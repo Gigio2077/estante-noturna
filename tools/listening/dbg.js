@@ -14,8 +14,8 @@ for (let i = 0; i + hop <= x.length && !p.finished; i += hop) {
   p.update(now); det.setExpected(p.started && !p.finished ? p.expected : []);
   for (const c of det.process(ring, now)) {
     let r = 'skip';
-    if (c.exp) { r = p.input(c.m, now, 'mic'); if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2; }
-    else if (!c.harmonic && (loud == null || c.db >= loud - 8)) r = p.input(c.m, now, 'mic');
+    if (c.exp) { r = p.input(c.m, now, 'mic', c.attack); if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2; }
+    else if (!c.harmonic && (loud == null || c.db >= loud - 8)) r = p.input(c.m, now, 'mic', c.attack);
     if (sc.all || r === 'wrong') {
       const near = notes.filter(n => n.m === c.m).map(n => +(secOf(n.t) - now / 1000).toFixed(2)).sort((a, b) => Math.abs(a) - Math.abs(b)).slice(0, 2);
       const sounding = notes.filter(n => secOf(n.t) <= now / 1000 && secOf(n.t) > now / 1000 - 1.5).map(n => n.m);

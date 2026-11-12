@@ -74,8 +74,8 @@ function evaluate(x, sc, offsetSec = 0) {
     const ons = det.process(ring, now);
     maxLevel = Math.max(maxLevel, det.level);
     for (const c of ons) {
-      if (c.exp) { const r = p.input(c.m, now, 'mic'); if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2; }
-      else if (!c.harmonic && (loud == null || c.db >= loud - 8)) p.input(c.m, now, 'mic');
+      if (c.exp) { const r = p.input(c.m, now, 'mic', c.attack); if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2; }
+      else if (!c.harmonic && (loud == null || c.db >= loud - 8)) p.input(c.m, now, 'mic', c.attack);
     }
   }
   if (!p.finished) p.finish(x.length / SR * 1000);

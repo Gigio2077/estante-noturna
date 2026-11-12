@@ -34,12 +34,80 @@ async function loadSamples() {
   return out;
 }
 
+// ---------- ruído ambiente (longe do microfone) ----------
+class Interference {
+  constructor(type, level, seed = 11) {
+    this.type = type; this.level = level; this.t = 0; this.r = seed;
+    this.bp = [0, 1, 2].map(() => ({ x1: 0, x2: 0, y1: 0, y2: 0 }));
+    this.phase = 0; this.f0 = 140; this.syl = 0; this.form = [700, 1200, 2600]; this.env = 0; this.on = false;
+    this.knock = []; this.tones = []; this.toneT = 0; this.pink = [0, 0, 0];
+  }
+  rand() { return (this.r = (this.r * 16807) % 2147483647) / 2147483647; }
+  biquad(st, x, f, q) {
+    const w = 2 * Math.PI * f / SR, al = Math.sin(w) / (2 * q), b0 = al, a0 = 1 + al, a1 = -2 * Math.cos(w), a2 = 1 - al;
+    const y = (b0 * x - b0 * st.x2 - a1 * st.y1 - a2 * st.y2) / a0;
+    st.x2 = st.x1; st.x1 = x; st.y2 = st.y1; st.y1 = y; return y;
+  }
+  voice() {
+    // sílabas de 120-320 ms, pausas; pulso glótico filtrado por 3 formantes; pitch deslizando
+    if (--this.syl <= 0) {
+      this.on = this.rand() > 0.25;
+      this.syl = Math.round((0.12 + this.rand() * 0.2) * SR);
+      const V = [[730, 1090, 2440], [270, 2290, 3010], [530, 1840, 2480], [570, 840, 2410], [300, 870, 2240]];
+      this.form = V[Math.floor(this.rand() * V.length)];
+      this.f0t = 100 + this.rand() * 140;
+    }
+    this.f0 += ((this.f0t || 140) - this.f0) * 0.0005;
+    this.env += ((this.on ? 1 : 0) - this.env) * 0.003;
+    this.phase += this.f0 / SR; let g = 0; if (this.phase >= 1) { this.phase -= 1; g = 1; }
+    const src = g * 4 + (this.rand() - 0.5) * 0.05;
+    let y = 0; for (let k = 0; k < 3; k++) y += this.biquad(this.bp[k], src, this.form[k], 6) / (k + 1);
+    return y * this.env;
+  }
+  music() {
+    // "TV com música": acordes de tons harmônicos mudando a cada ~0.5 s
+    if (this.toneT-- <= 0) {
+      this.toneT = Math.round((0.3 + this.rand() * 0.5) * SR);
+      const root = 48 + Math.floor(this.rand() * 24);
+      this.tones = [root, root + 4, root + 7, root + 12 + Math.floor(this.rand() * 5)].map(m => ({ f: 440 * Math.pow(2, (m - 69) / 12), ph: 0, a: 0.5 + this.rand() * 0.5 }));
+      this.mEnv = 1;
+    }
+    this.mEnv *= 0.99995;
+    let y = 0;
+    for (const t of this.tones) { t.ph += t.f / SR; for (let h = 1; h <= 4; h++) y += Math.sin(2 * Math.PI * t.ph * h) * t.a / (h * h); }
+    return y * 0.25 * this.mEnv;
+  }
+  knocks() {
+    if (this.rand() < 1 / (SR * 0.9)) this.knock.push({ f: 70 + this.rand() * 200, t: 0, a: 0.5 + this.rand() });
+    let y = 0;
+    for (const k of this.knock) { y += Math.sin(2 * Math.PI * k.f * k.t / SR) * Math.exp(-k.t / (0.03 * SR)) * k.a + (k.t < 40 ? (this.rand() - 0.5) * k.a : 0); k.t++; }
+    this.knock = this.knock.filter(k => k.t < 0.3 * SR);
+    return y;
+  }
+  hiss() {
+    const w = this.rand() * 2 - 1; this.pink[0] = 0.99 * this.pink[0] + w * 0.1; this.pink[1] = 0.9 * this.pink[1] + w * 0.3;
+    if (this.rand() < 1 / (SR * 1.5)) this.burst = 0.4 * SR;
+    const b = this.burst > 0 ? (this.burst--, 1) : 0.15;
+    return (this.pink[0] + this.pink[1] + w * 0.2) * b;
+  }
+  sample() {
+    switch (this.type) {
+      case 'voz': return this.voice() * this.level;
+      case 'tv': return (this.voice() * 0.6 + this.music()) * this.level;
+      case 'batidas': return this.knocks() * this.level;
+      case 'chiado': return this.hiss() * this.level;
+      default: return 0;
+    }
+  }
+}
+
 // ---------- mixer ----------
 class Mixer {
   constructor(samples, opts) {
     this.s = samples; this.keys = Object.keys(samples).map(Number).sort((a, b) => a - b);
     this.voices = []; this.t = 0; this.o = opts;
     this.hpPrev = 0; this.hpOut = 0;
+    this.intf = opts.interf ? new Interference(opts.interf.type, opts.interf.level, opts.seed || 11) : null;
   }
   noteOn(m, vel, delaySamples = 0) {
     let best = this.keys[0]; for (const k of this.keys) if (Math.abs(k - m) < Math.abs(best - m)) best = k;
@@ -64,7 +132,7 @@ class Mixer {
     for (let i = 0; i < n; i++) {
       const x = out[i] * (this.o.gain || 1);
       this.hpOut = a * (this.hpOut + x - this.hpPrev); this.hpPrev = x;
-      out[i] = this.hpOut + (Math.random() * 2 - 1) * (this.o.noise ?? 0.002);
+      out[i] = this.hpOut + (Math.random() * 2 - 1) * (this.o.noise ?? 0.002) + (this.intf ? this.intf.sample() : 0);
     }
     return out;
   }
@@ -76,13 +144,19 @@ function simulate(samples, sc) {
   const mix = new Mixer(samples, sc);
   const N = det.N, hop = Math.round(SR * 0.02), ring = new Float32Array(N);
   let now = 0, lastIdx = -1, nextPlay = 0, tries = 0, replays = 0, falseWrong = 0, flagged = 0, loud = null, lastBar = -1, injected = 0;
+  let falseAdv = 0, playedAt = null; const lat = [];
   const log = [];
-  p.on('wrong', (m, s) => { flagged++; log.push(`wrong ${m} @step ${p.idx} bar ${s.bar} exp ${s.notes.map(n => n.m)}`); });
+  p.on('wrong', (m, s) => { flagged++; log.push(`wrong ${m} @step ${p.idx} bar ${s.bar} exp ${s.notes.map(n => n.m)} t=${now}`); });
+  p.on('hit', (m, s) => { if (sc.logHits) log.push(`hit ${m} step ${p.idx} [${s.notes.map(n => n.m)}] t=${now} played=${playedAt}`); });
   p.start(0);
   const limit = p.steps.length * 4000 + 3000;
   let rnd = sc.seed || 1; const rand = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
   while (!p.finished && now < limit) {
-    if (p.idx !== lastIdx) { lastIdx = p.idx; nextPlay = now + 250 + rand() * 200; tries = 0; }
+    if (p.idx !== lastIdx) {
+      if (lastIdx >= 0 && playedAt == null) falseAdv++;                 // avançou sem o aluno tocar
+      if (lastIdx >= 0 && playedAt != null && tries === 1) lat.push(now - playedAt);
+      lastIdx = p.idx; nextPlay = now + (sc.pauseMs || 250) + rand() * 200; tries = 0; playedAt = null;
+    }
     if (now >= nextPlay) {
       const s = p.current;
       if (s) {
@@ -91,7 +165,9 @@ function simulate(samples, sc) {
         if (wrongNow) { injected++; mix.noteOn(s.notes[0].m + 1, 0.7); nextPlay = now + 500; tries++; }
         else {
           if (tries > 0) replays++;
-          for (const n of s.notes) mix.noteOn(n.m, (n.h === 'L' ? 0.45 : 0.75) * (0.8 + rand() * 0.4) * (sc.vel || 1), Math.round(rand() * 0.025 * SR));
+          let d0 = 1e9;
+          for (const n of s.notes) { const d = Math.round(rand() * 0.025 * SR); d0 = Math.min(d0, d); mix.noteOn(n.m, (n.h === 'L' ? 0.45 : 0.75) * (0.8 + rand() * 0.4) * (sc.vel || 1), d); }
+          if (playedAt == null) playedAt = now + d0 / SR * 1000;
           tries++; nextPlay = now + 1600;
         }
       }
@@ -101,14 +177,16 @@ function simulate(samples, sc) {
     det.setExpected(p.started && !p.finished ? p.expected : []);
     const ons = det.process(ring, now);
     for (const c of ons) {
-      if (c.exp) { const r = p.input(c.m, now, 'mic'); if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2; }
-      else if (!c.harmonic && (loud == null || c.db >= loud - 8)) p.input(c.m, now, 'mic');
+      if (c.exp) { const r = p.input(c.m, now, 'mic', c.attack); if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2; }
+      else if (!c.harmonic && (loud == null || c.db >= loud - 8)) p.input(c.m, now, 'mic', c.attack);
     }
     p.update(now);
     now += 20;
   }
   falseWrong = flagged - injected;
-  return { name: sc.name, steps: p.steps.length, done: p.idx, finished: p.finished, replays, flagged, injected, falseWrong, secs: Math.round(now / 1000), log: log.slice(0, sc.showLog || 0) };
+  lat.sort((a, b) => a - b);
+  const q = f => lat.length ? Math.round(lat[Math.min(lat.length - 1, Math.floor(lat.length * f))]) : null;
+  return { name: sc.name, steps: p.steps.length, done: p.idx, finished: p.finished, replays, flagged, injected, falseWrong, falseAdv, latMed: q(0.5), latP90: q(0.9), secs: Math.round(now / 1000), log: log.slice(0, sc.showLog || 0) };
 }
 
 module.exports = { loadSamples, simulate, Mixer, piece, Practice, PitchDetector, SR };

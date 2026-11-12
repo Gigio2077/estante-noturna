@@ -205,13 +205,13 @@
   };
 
   // ---------- entrada ----------
-  function handleInput(m, src) {
+  function handleInput(m, src, attack) {
     if (demo) return;
     if (!practice || !practice.started || practice.finished) {
       roll.flashKey(m, src === 'mic' ? roll.col.muted : roll.col.R, 300);
       return;
     }
-    const r = practice.input(m, performance.now(), src);
+    const r = practice.input(m, performance.now(), src, attack);
     if (r === 'ignored' && src !== 'mic') roll.flashKey(m, roll.col.muted, 200);
     return r;
   }
@@ -224,9 +224,9 @@
     for (const c of cands) {
       let r;
       if (c.exp) {
-        r = handleInput(c.m, 'mic');
+        r = handleInput(c.m, 'mic', c.attack);
         if (r === 'hit') loud = loud == null ? c.db : loud * 0.8 + c.db * 0.2;
-      } else if (!c.harmonic && (loud == null || c.db >= loud - 8)) r = handleInput(c.m, 'mic');
+      } else if (!c.harmonic && (loud == null || c.db >= loud - 8)) r = handleInput(c.m, 'mic', c.attack);
       // mostra no teclado o que o microfone ouviu, mesmo quando não conta para a prática
       if (r === 'ignored' && !c.harmonic) roll.flashKey(c.m, roll.col.muted, 220);
     }

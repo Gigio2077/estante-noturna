@@ -31,7 +31,7 @@ Cada push na branch `main` republica a pasta `app/` pelo GitHub Pages (`.github/
 - **Zoom do teclado**: botões − / Auto / + sobre as notas, pinça com dois dedos ou roda do mouse. Com zoom, o teclado acompanha as notas atuais e uma seta na borda mostra notas que ficaram fora da tela.
 - **Celular deitado**: os controles viram duas colunas laterais e o centro fica para partitura e teclado.
 - **Progresso**: salvo no navegador do aparelho (localStorage).
-- **Escuta**: "Começar" liga o microfone. Notas ouvidas piscam em cinza no teclado. Só contam notas com ataque de martelo; notas que ainda soam no pedal, harmônicos e ruídos muito longe do esperado não contam como erro.
+- **Escuta**: "Começar" liga o microfone. Notas ouvidas piscam em cinza no teclado. Uma nota só conta quando há uma martelada de verdade (muitas frequências saltam juntas, energia concentrada em harmônicos, bem acima do silêncio da sala) e a altura daquela nota cresce logo depois. Ruído distante, voz, TV, chiado e notas que ainda soam no pedal não contam. Cada martelada vale para um passo só. A sensibilidade controla esses limiares: abaixe se algo dispara sozinho, suba se o piano está longe ou você toca muito suave.
 - **Som**: Salamander Grand Piano (Yamaha C5), de Alexander Holm, CC BY 3.0.
 
 ## Teste sem piano
@@ -48,6 +48,7 @@ python3 tools/listening/decode.py app/samples/piano            # gera app/sample
 export APP=app SAMPLES=app/samples/piano SDIR=/tmp/escuta
 node tools/listening/sim.js '[{"name":"direita","hand":"R","from":0,"to":4}]'   # aluno simulado, modo Espera
 node tools/listening/live.js '{"name":"ao vivo","hand":"B","from":0,"to":2}'     # alto-falante -> microfone (PipeWire)
+node tools/listening/noise_suite.js 2,5,8      # ruídos (voz, TV, batidas, chiado): avanço sozinho, erros falsos, atraso
 ```
 
 `index.html?selftest=1` faz o app tocar e ouvir a si mesmo internamente; `?selftest=mic` toca pelos alto-falantes e ouve pelo microfone.
